@@ -1012,7 +1012,8 @@
 
   <footer>
     全 六 巻 完 全 収 録<br>
-    <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span>
+    <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-3</span>
   </footer>
 </div>
 
@@ -4852,8 +4853,15 @@ if (!ttsSupported && ttsControlsEl) {
 // 声を一意に見分けるキー。
 // iPhoneでは標準版と拡張版の Kyoko がどちらも名前「Kyoko」なので、
 // 名前ではなく voiceURI（例：com.apple.voice.enhanced.ja-JP.Kyoko）で区別する。
+// 万一 voiceURI まで同じ声が複数あるときは、並び順の番号を付けて区別する。
 function ttsVoiceKey(v) {
-  return v.voiceURI || v.name;
+  const base = v.voiceURI || v.name;
+  let all = [];
+  try { all = window.speechSynthesis.getVoices() || []; } catch(e) {}
+  const same = all.filter(x => (x.voiceURI || x.name) === base);
+  if (same.length <= 1) return base;
+  const i = same.findIndex(x => x === v || (x.name === v.name && x.lang === v.lang && x.localService === v.localService));
+  return base + "#" + Math.max(i, 0);
 }
 
 // 声の品質：3=プレミアム、2=拡張（高品質）、1=普通、0=標準（コンパクト）、
@@ -5400,10 +5408,18 @@ function buildVoiceList() {
   if (ja.length > 0) {
     const group = document.createElement("optgroup");
     group.label = "日本語の声";
-    ja.forEach(v => {
+    // 表示名が重なる声には「（その1）」「（その2）」を付けて見分けられるようにする
+    const labels = ja.map(ttsVoiceLabel);
+    const seen = {};
+    ja.forEach((v, i) => {
       const opt = document.createElement("option");
       opt.value = ttsVoiceKey(v);
-      opt.textContent = ttsVoiceLabel(v);
+      let label = labels[i];
+      if (labels.filter(l => l === label).length > 1) {
+        seen[label] = (seen[label] || 0) + 1;
+        label += "（その" + seen[label] + "）";
+      }
+      opt.textContent = label;
       group.appendChild(opt);
     });
     select.appendChild(group);
