@@ -785,10 +785,6 @@
     0%, 92%, 100% { transform: scaleY(1); }
     95%           { transform: scaleY(0.1); }
   }
-  /* 動きを減らす設定の端末では止める（スクリプト側も動かさない） */
-  @media (prefers-reduced-motion: reduce) {
-    .cc-eye { animation: none; }
-  }
 
   .settings-section {
     margin: 18px 0;
@@ -1075,7 +1071,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-9</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-10</span>
   </footer>
 </div>
 
@@ -5684,8 +5680,7 @@ if (ttsSupported && typeof window.speechSynthesis.addEventListener === "function
 (function ccMascot() {
   const svg = document.querySelector(".cc-mascot svg");
   if (!svg) return;
-  // 「動きを減らす」設定の端末では動かさない
-  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // 小さくゆっくりした動きなので、端末の「動きを減らす」設定に関係なく動かす
 
   const body = svg.querySelector(".cc-hop");
   const armL = svg.querySelector(".cc-arm-l");
