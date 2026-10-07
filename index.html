@@ -750,16 +750,13 @@
   .cc-mascot {
     position: absolute;
     top: 10px;
-    left: 12px;
+    left: 20px;
     z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 3px;
     text-decoration: none;
-  }
-  .cc-mascot {
-    align-items: flex-start;
   }
   .cc-mascot svg {
     width: 36px;
@@ -1071,7 +1068,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-10</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.08-1</span>
   </footer>
 </div>
 
@@ -5687,12 +5684,12 @@ if (ttsSupported && typeof window.speechSynthesis.addEventListener === "function
   const armR = svg.querySelector(".cc-arm-r");
   const legs = Array.from(svg.querySelectorAll(".cc-leg")); // 左から順に4本
 
-  const DIST = 24;        // 歩く幅（px）
+  const HALF = 12;        // 真ん中から左右それぞれに歩く幅（px）。下の「Claude Code」の文字の真ん中を中心に歩く
   const STEP = 2;         // 1歩で進む距離（px）
   const TICK = 220;       // 1コマの長さ（ミリ秒）
   const IDLE_TICKS = 9;   // 端で立ち止まるコマ数
 
-  let x = 0, dir = 1, mode = "idle", t = 0;
+  let x = -HALF, dir = 1, mode = "idle", t = 0;
 
   const legUp = (i, up) => legs[i].setAttribute("height", up ? 1 : 2);
   const armUp = (el, up) => el.setAttribute("y", up ? 1 : 2);
@@ -5710,8 +5707,8 @@ if (ttsSupported && typeof window.speechSynthesis.addEventListener === "function
       legUp(1, ph === 1); legUp(3, ph === 1);
       bob(ph === 0);
       x += STEP * dir;
-      if (x <= 0 || x >= DIST) {
-        x = Math.max(0, Math.min(DIST, x));
+      if (x <= -HALF || x >= HALF) {
+        x = Math.max(-HALF, Math.min(HALF, x));
         mode = "idle"; t = 0; rest();
       }
     } else {
@@ -5722,7 +5719,7 @@ if (ttsSupported && typeof window.speechSynthesis.addEventListener === "function
       legUp(0, ph === 2);
       legUp(3, ph === 0);
       bob(false);
-      if (t === Math.floor(IDLE_TICKS / 2)) dir = (x >= DIST) ? -1 : 1; // 途中で振り向く
+      if (t === Math.floor(IDLE_TICKS / 2)) dir = (x >= HALF) ? -1 : 1; // 途中で振り向く
       if (t >= IDLE_TICKS) { mode = "walk"; t = 0; rest(); }
     }
     draw();
