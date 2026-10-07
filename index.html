@@ -746,6 +746,65 @@
   }
   header { position: relative; }
 
+  /* === Claude Code のキャラクター（ヘッダー左上） === */
+  .cc-mascot {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-decoration: none;
+  }
+  .cc-mascot svg {
+    width: 36px;
+    height: 21px;
+    shape-rendering: crispEdges;
+    overflow: visible;
+  }
+  .cc-mascot .cc-label {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 7px;
+    letter-spacing: 0.05em;
+    color: #d97757;
+    opacity: 0.8;
+    white-space: nowrap;
+  }
+  .cc-body { fill: #d97757; }
+  .cc-eye { fill: #1a1612; transform-box: fill-box; transform-origin: center; }
+  /* ぴょこぴょこ跳ねる（ドット絵らしくカクカク動かす） */
+  .cc-hop { animation: cc-hop 1.2s steps(1) infinite; }
+  @keyframes cc-hop {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-1px); }
+  }
+  /* 足踏み：前後の足を交互に上げる */
+  .cc-legs-a { animation: cc-step 0.6s steps(1) infinite; }
+  .cc-legs-b { animation: cc-step 0.6s steps(1) infinite; animation-delay: -0.3s; }
+  @keyframes cc-step {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-1px); }
+  }
+  /* ときどきまばたき */
+  .cc-eye { animation: cc-blink 4s infinite; }
+  @keyframes cc-blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95%           { transform: scaleY(0.1); }
+  }
+  /* 腕をときどき振る */
+  .cc-arm-r { transform-box: fill-box; transform-origin: left center; animation: cc-wave 5s steps(1) infinite; }
+  @keyframes cc-wave {
+    0%, 70%, 100% { transform: translateY(0); }
+    75%, 85%      { transform: translateY(-1px); }
+    80%, 90%      { transform: translateY(0); }
+  }
+  /* 動きを減らす設定の端末では止める */
+  @media (prefers-reduced-motion: reduce) {
+    .cc-hop, .cc-legs-a, .cc-legs-b, .cc-eye, .cc-arm-r { animation: none; }
+  }
+
   .settings-section {
     margin: 18px 0;
     padding: 14px;
@@ -961,6 +1020,27 @@
 
 <div class="container">
   <header>
+    <a class="cc-mascot" href="https://claude.com/claude-code" target="_blank" rel="noopener" title="Claude Code で作成" aria-label="Claude Code で作成">
+      <!-- 1マス＝1ドットのドット絵（横12×縦6マス） -->
+      <svg viewBox="0 -1 12 7" aria-hidden="true">
+        <g class="cc-legs-a">
+          <rect class="cc-body" x="2" y="4" width="1" height="2"/>
+          <rect class="cc-body" x="7" y="4" width="1" height="2"/>
+        </g>
+        <g class="cc-legs-b">
+          <rect class="cc-body" x="4" y="4" width="1" height="2"/>
+          <rect class="cc-body" x="9" y="4" width="1" height="2"/>
+        </g>
+        <g class="cc-hop">
+          <rect class="cc-body" x="2" y="0" width="8" height="4"/>
+          <rect class="cc-body" x="0" y="2" width="2" height="1"/>
+          <rect class="cc-body cc-arm-r" x="10" y="2" width="2" height="1"/>
+          <rect class="cc-eye" x="3" y="1" width="1" height="1"/>
+          <rect class="cc-eye" x="8" y="1" width="1" height="1"/>
+        </g>
+      </svg>
+      <span class="cc-label">Claude Code</span>
+    </a>
     <button id="settingsBtn" class="settings-btn" type="button" aria-label="設定">⚙</button>
     <div class="crest">❀</div>
     <h1>御神書索引</h1>
@@ -1013,7 +1093,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-5</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-6</span>
   </footer>
 </div>
 
