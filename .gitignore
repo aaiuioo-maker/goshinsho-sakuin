@@ -1,0 +1,4 @@
+# Azure Speech のキー（公開しない）
+.azure-speech.json
+# 音声生成の作業用ファイル
+tools/work/

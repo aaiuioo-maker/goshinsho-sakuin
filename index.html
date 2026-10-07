@@ -1013,7 +1013,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-4</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-5</span>
   </footer>
 </div>
 
@@ -1064,6 +1064,7 @@
       <select id="voiceSelect" class="voice-select"></select>
       <button id="voiceTestBtn" class="settings-btn-inline" type="button">▶ この声で試聴</button>
       <div class="settings-note">
+        解説付きの項目は、あらかじめ用意した自然な声（Nanami）で再生されます。ここで選ぶ声は、音声が用意されていない項目と試聴に使われます。<br>
         端末で使える日本語音声から選べます。<br>
         ▸ iPhone：Safariではウェブページが使える声が「Kyoko（標準）」に限られます（端末にダウンロードした拡張版の声は、iPhoneの制限でウェブからは使えません）。<br>
         ▸ Android：「Google 日本語」がおすすめ。<br>
@@ -4696,6 +4697,7 @@ function showDetail(data) {
     bodyWrap.style.display = "none";
     ttsText = "";
   }
+  ttsRef = data.ref || null;
 
   // モーダルを開き直すときは前の読み上げを止める
   ttsStop();
@@ -5023,13 +5025,55 @@ function ttsStopKeepAlive() {
 // 古い読み上げの終了通知を無視するために使う。
 let ttsSession = 0;
 
+// =============================================================
+// 音声ファイル（Azure の Nanami で事前に作った MP3）
+//   audio/manifest.json に「項目 → 音声ファイル」の対応がある。
+//   ファイルがある項目はそれを再生し、ない項目は端末の音声合成で読む。
+// =============================================================
+let ttsRef = null;             // 今読む項目（"v1|章名|番号"）
+let audioMap = {};
+let ttsUsingAudio = false;     // いま音声ファイルを再生中か
+const ttsAudio = new Audio();
+ttsAudio.preload = "auto";
+
+fetch("audio/manifest.json", { cache: "no-cache" })
+  .then(r => r.ok ? r.json() : null)
+  .then(m => { if (m && m.files) audioMap = m.files; })
+  .catch(() => {});
+
+ttsAudio.addEventListener("ended", () => {
+  if (!ttsUsingAudio || !ttsActive) return;
+  ttsFinished();
+});
+ttsAudio.addEventListener("error", () => {
+  if (!ttsUsingAudio || !ttsActive) return;
+  // 音声ファイルが読めなかったときは、端末の音声合成で読む
+  ttsUsingAudio = false;
+  ttsSpeakSynth();
+});
+
+// ロック画面やコントロールセンターに項目名を出す（対応端末のみ）
+function ttsSetMediaInfo() {
+  if (!("mediaSession" in navigator)) return;
+  const entry = lookupEntry(ttsRef);
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: entry ? entry.title : "御神書索引",
+      artist: "御神書索引",
+      artwork: [{ src: "icon-512.png", sizes: "512x512", type: "image/png" }]
+    });
+  } catch(e) {}
+}
+
 // 読み上げを完全に停止
 function ttsStop() {
-  if (!ttsSupported) return;
   ttsSession++;
   ttsActive = false;
   ttsPaused = false;
   ttsIndex = 0;
+  ttsUsingAudio = false;
+  try { ttsAudio.pause(); } catch(e) {}
+  if (!ttsSupported) { ttsReset(); return; }
   ttsStopKeepAlive();
   try { window.speechSynthesis.cancel(); } catch(e) {}
   ttsReset();
@@ -5045,10 +5089,37 @@ function ttsFinished() {
   }
 }
 
-// 読み上げ開始
+// 読み上げ開始：音声ファイルがあればそれを、なければ端末の音声合成を使う
+function ttsPlay() {
+  if (!ttsText) return;
+  const src = ttsRef && audioMap[ttsRef];
+  if (src) {
+    ttsSession++;
+    try { if (ttsSupported) window.speechSynthesis.cancel(); } catch(e) {}
+    ttsStopKeepAlive();
+    ttsActive = true;
+    ttsPaused = false;
+    ttsUsingAudio = true;
+    ttsShowPlaying();
+    ttsSetMediaInfo();
+    ttsAudio.src = src;
+    ttsAudio.playbackRate = TTS_RATE;
+    const p = ttsAudio.play();
+    if (p && p.catch) p.catch(() => {
+      // 再生を始められなかったときは端末の音声合成で読む
+      if (!ttsUsingAudio || !ttsActive) return;
+      ttsUsingAudio = false;
+      ttsSpeakSynth();
+    });
+    return;
+  }
+  ttsSpeakSynth();
+}
+
+// 端末の音声合成で読む
 // 文をまとめて先に音声エンジンへ渡しておくことで、文と文の間に
 // 無駄な無音ができず、なめらかにつながる。
-function ttsPlay() {
+function ttsSpeakSynth() {
   if (!ttsSupported || !ttsText) return;
   ttsSession++;
   const session = ttsSession;
@@ -5098,14 +5169,16 @@ if (ttsSupported) {
   });
 
   ttsPauseBtn.addEventListener("click", () => {
-    try { window.speechSynthesis.pause(); } catch(e) {}
+    if (ttsUsingAudio) ttsAudio.pause();
+    else { try { window.speechSynthesis.pause(); } catch(e) {} }
     ttsPaused = true;
     ttsPauseBtn.style.display = "none";
     ttsResumeBtn.style.display = "";
   });
 
   ttsResumeBtn.addEventListener("click", () => {
-    try { window.speechSynthesis.resume(); } catch(e) {}
+    if (ttsUsingAudio) { const p = ttsAudio.play(); if (p && p.catch) p.catch(() => {}); }
+    else { try { window.speechSynthesis.resume(); } catch(e) {} }
     ttsPaused = false;
     ttsResumeBtn.style.display = "none";
     ttsPauseBtn.style.display = "";
@@ -5213,9 +5286,12 @@ function bulkHighlight(ref) {
 
 function bulkAdvance() {
   // 現在の読み上げを片付け、次の項目を読む
+  // （音声ファイルは止めずに src を差し替えるだけにする。iPhoneでは同じ再生器を
+  //   使い続けたほうが、画面を触らなくても次の項目へ進める）
   ttsActive = false;
+  ttsUsingAudio = false;
   ttsStopKeepAlive();
-  try { window.speechSynthesis.cancel(); } catch(e) {}
+  try { if (ttsSupported) window.speechSynthesis.cancel(); } catch(e) {}
 
   if (!bulkActive || bulkQueue.length === 0) {
     // キュー終了
@@ -5234,11 +5310,12 @@ function bulkAdvance() {
   }
   // ttsTextをセットしてttsPlayを呼ぶ
   ttsText = `${entry.title}。\n${entry.content}`;
+  ttsRef = ref;
   ttsPlay();
 }
 
 function bulkStart(refs) {
-  if (!ttsSupported || refs.length === 0) return;
+  if (refs.length === 0) return;
   // 単発のTTSは止める
   ttsStop();
 
@@ -5258,8 +5335,10 @@ function bulkStop() {
   bulkQueue = [];
   bulkCurrentRef = null;
   ttsActive = false;
+  ttsUsingAudio = false;
+  try { ttsAudio.pause(); } catch(e) {}
   ttsStopKeepAlive();
-  try { window.speechSynthesis.cancel(); } catch(e) {}
+  try { if (ttsSupported) window.speechSynthesis.cancel(); } catch(e) {}
   ttsReset();
   document.querySelectorAll(".entry.bulk-playing").forEach(e => e.classList.remove("bulk-playing"));
   const stopBtn = document.getElementById("bulkStop");
@@ -5522,6 +5601,8 @@ if (rateSliderEl && rateValueEl) {
   rateSliderEl.addEventListener("input", () => {
     const v = parseFloat(rateSliderEl.value);
     TTS_RATE = v;
+    // 音声ファイル再生中なら、その場で速さを変える
+    if (ttsUsingAudio) ttsAudio.playbackRate = v;
     rateValueEl.textContent = v.toFixed(2);
     localStorage.setItem("goshinsho_tts_rate", String(v));
   });
