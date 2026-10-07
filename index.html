@@ -758,11 +758,26 @@
     gap: 3px;
     text-decoration: none;
   }
+  .cc-mascot {
+    align-items: flex-start;
+  }
   .cc-mascot svg {
     width: 36px;
     height: 21px;
     shape-rendering: crispEdges;
     overflow: visible;
+    transform-origin: center;
+    animation: cc-walk 9s infinite;
+  }
+  /* 左右に行ったり来たり：右へ歩く → 立ち止まって振り向く → 左へ戻る → 振り向く */
+  @keyframes cc-walk {
+    0%   { transform: translateX(0)    scaleX(1);  animation-timing-function: step-end; }
+    10%  { transform: translateX(0)    scaleX(1);  animation-timing-function: steps(12); }
+    45%  { transform: translateX(24px) scaleX(1);  animation-timing-function: step-end; }
+    52%  { transform: translateX(24px) scaleX(-1); animation-timing-function: step-end; }
+    60%  { transform: translateX(24px) scaleX(-1); animation-timing-function: steps(12); }
+    95%  { transform: translateX(0)    scaleX(-1); animation-timing-function: step-end; }
+    100% { transform: translateX(0)    scaleX(1); }
   }
   .cc-mascot .cc-label {
     font-family: -apple-system, "Segoe UI", sans-serif;
@@ -802,7 +817,7 @@
   }
   /* 動きを減らす設定の端末では止める */
   @media (prefers-reduced-motion: reduce) {
-    .cc-hop, .cc-legs-a, .cc-legs-b, .cc-eye, .cc-arm-r { animation: none; }
+    .cc-mascot svg, .cc-hop, .cc-legs-a, .cc-legs-b, .cc-eye, .cc-arm-r { animation: none; }
   }
 
   .settings-section {
@@ -1093,7 +1108,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-6</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-7</span>
   </footer>
 </div>
 
