@@ -1013,7 +1013,7 @@
   <footer>
     全 六 巻 完 全 収 録<br>
     <span style="font-size: 9px; opacity: 0.7; letter-spacing: 0.2em;">大 光 明 世 界</span><br>
-    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-3</span>
+    <span style="font-size: 9px; opacity: 0.5; letter-spacing: 0.1em;">版 2026.10.07-4</span>
   </footer>
 </div>
 
@@ -1065,7 +1065,7 @@
       <button id="voiceTestBtn" class="settings-btn-inline" type="button">▶ この声で試聴</button>
       <div class="settings-note">
         端末で使える日本語音声から選べます。<br>
-        ▸ iPhone：「設定 → アクセシビリティ → 読み上げコンテンツ → 声 → 日本語」で「Kyoko (拡張)」をダウンロードすると最も滑らかになります。ダウンロード後、このアプリ（Safari）を一度完全に終了して開き直すと、一覧に「Kyoko（拡張）★高品質」が出ます。<br>
+        ▸ iPhone：Safariではウェブページが使える声が「Kyoko（標準）」に限られます（端末にダウンロードした拡張版の声は、iPhoneの制限でウェブからは使えません）。<br>
         ▸ Android：「Google 日本語」がおすすめ。<br>
         ▸ Mac：「システム設定 → アクセシビリティ → 読み上げコンテンツ」で拡張版をダウンロード。
       </div>
@@ -5375,6 +5375,15 @@ function buildVoiceList() {
     return;
   }
   voiceListRetryCount = 0;
+
+  // iPhoneのSafariは同じ声を重複して返すことがあるので、同じIDの声は1つにまとめる
+  const seenIds = new Set();
+  voices = voices.filter(v => {
+    const id = (v.voiceURI || v.name) + "|" + v.lang;
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
 
   // 日本語音声を上位に（高品質順）、それ以外も末尾に表示（多言語環境のため）
   const ja = ttsSortJaVoices(voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja")));
