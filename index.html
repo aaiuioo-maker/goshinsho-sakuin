@@ -1064,7 +1064,7 @@
       <button id="voiceTestBtn" class="settings-btn-inline" type="button">▶ この声で試聴</button>
       <div class="settings-note">
         端末で使える日本語音声から選べます。<br>
-        ▸ iPhone：「設定 → アクセシビリティ → 読み上げコンテンツ → 声 → 日本語」で「Kyoko (拡張)」をダウンロードすると最も滑らかになります。<br>
+        ▸ iPhone：「設定 → アクセシビリティ → 読み上げコンテンツ → 声 → 日本語」で「Kyoko (拡張)」をダウンロードすると最も滑らかになります。ダウンロード後、このアプリ（Safari）を一度完全に終了して開き直すと、一覧に「Kyoko（拡張）★高品質」が出ます。<br>
         ▸ Android：「Google 日本語」がおすすめ。<br>
         ▸ Mac：「システム設定 → アクセシビリティ → 読み上げコンテンツ」で拡張版をダウンロード。
       </div>
@@ -4849,29 +4849,70 @@ if (!ttsSupported && ttsControlsEl) {
   ttsControlsEl.style.display = "none";
 }
 
+// 声を一意に見分けるキー。
+// iPhoneでは標準版と拡張版の Kyoko がどちらも名前「Kyoko」なので、
+// 名前ではなく voiceURI（例：com.apple.voice.enhanced.ja-JP.Kyoko）で区別する。
+function ttsVoiceKey(v) {
+  return v.voiceURI || v.name;
+}
+
+// 声の品質：3=プレミアム、2=拡張（高品質）、1=普通、0=標準（コンパクト）、
+// -1=機械的な合成音（iPhoneの eloquence 系）
+function ttsVoiceQuality(v) {
+  const s = ((v.voiceURI || "") + " " + (v.name || "")).toLowerCase();
+  if (s.includes("eloquence")) return -1;
+  if (s.includes("premium")) return 3;
+  if (s.includes("enhanced") || s.includes("natural") || s.includes("neural")) return 2;
+  if (s.includes("compact")) return 0;
+  return 1;
+}
+
+// 一覧に出す表示名（同じ名前の声も品質で見分けられるようにする）
+function ttsVoiceLabel(v) {
+  const q = ttsVoiceQuality(v);
+  let tag = "";
+  if (q === 3) tag = "（プレミアム）★高品質";
+  else if (q === 2) tag = "（拡張）★高品質";
+  else if (q === 0) tag = "（標準）";
+  else if ((v.name || "").toLowerCase().includes("google")) tag = " ◎";
+  return v.name + tag;
+}
+
+// 日本語の声を「品質が高い順 → おすすめの名前順」に並べる
+function ttsSortJaVoices(ja) {
+  const prefer = ["kyoko", "o-ren", "oren", "otoya", "google"];
+  const rank = v => {
+    const n = (v.name || "").toLowerCase();
+    const i = prefer.findIndex(p => n.includes(p));
+    return i === -1 ? prefer.length : i;
+  };
+  return ja.slice().sort((a, b) =>
+    (ttsVoiceQuality(b) - ttsVoiceQuality(a)) ||
+    (rank(a) - rank(b)) ||
+    ((b.localService ? 1 : 0) - (a.localService ? 1 : 0)));
+}
+
 // 良い日本語音声を選ぶ（保存された設定を最優先、なければ高品質版を自動選択）
 function ttsPickVoice() {
   if (!ttsSupported) return null;
   let voices = [];
   try { voices = window.speechSynthesis.getVoices(); } catch(e) {}
   if (!voices || voices.length === 0) return null;
-  const ja = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
-  if (ja.length === 0) return null;
-  // 1) 保存された声の名前があれば優先
+  // 1) 保存された声（一意キー）があれば最優先
+  const savedKey = localStorage.getItem("goshinsho_voice_uri");
+  if (savedKey) {
+    const hit = voices.find(v => ttsVoiceKey(v) === savedKey);
+    if (hit) return hit;
+  }
+  const ja = ttsSortJaVoices(voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja")));
+  // 2) 以前の版で名前だけ保存していた場合：同名の中で一番品質の高い声
   const savedName = localStorage.getItem("goshinsho_voice_name");
   if (savedName) {
     const hit = ja.find(v => v.name === savedName) || voices.find(v => v.name === savedName);
     if (hit) return hit;
   }
-  // 2) 自動選択（拡張版や高品質版を優先）
-  const prefer = ["enhanced", "premium", "natural", "neural", "kyoko", "o-ren", "oren", "otoya", "siri"];
-  for (const key of prefer) {
-    const hit = ja.find(v => v.name && v.name.toLowerCase().includes(key));
-    if (hit) return hit;
-  }
-  // 3) ローカル（端末内蔵）の音声を優先、なければ先頭
-  const local = ja.find(v => v.localService);
-  return local || ja[0];
+  // 3) 自動選択：品質が一番高い日本語の声
+  return ja[0] || null;
 }
 
 // 読み上げ向けにテキストを整える
@@ -5327,10 +5368,16 @@ function buildVoiceList() {
   }
   voiceListRetryCount = 0;
 
-  // 日本語音声を上位に、それ以外も末尾に表示（多言語環境のため）
-  const ja = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+  // 日本語音声を上位に（高品質順）、それ以外も末尾に表示（多言語環境のため）
+  const ja = ttsSortJaVoices(voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja")));
   const others = voices.filter(v => !v.lang || !v.lang.toLowerCase().startsWith("ja"));
   const ordered = [...ja, ...others];
+
+  // 声の一覧が前回と同じなら作り直さない
+  // （iPhoneは選択中にも一覧の更新通知が来ることがあり、作り直すと選択が戻ってしまう）
+  const signature = ordered.map(ttsVoiceKey).join("|");
+  if (select.dataset.signature === signature && select.options.length > 1) return;
+  select.dataset.signature = signature;
 
   // 既存のオプションをクリア
   select.innerHTML = "";
@@ -5355,16 +5402,8 @@ function buildVoiceList() {
     group.label = "日本語の声";
     ja.forEach(v => {
       const opt = document.createElement("option");
-      opt.value = v.name;
-      // 拡張版や高品質版は印を付ける
-      const lower = v.name.toLowerCase();
-      let badge = "";
-      if (lower.includes("enhanced") || lower.includes("premium") || lower.includes("natural") || lower.includes("neural")) {
-        badge = " ★高品質";
-      } else if (lower.includes("google")) {
-        badge = " ◎";
-      }
-      opt.textContent = v.name + badge + " (" + v.lang + ")";
+      opt.value = ttsVoiceKey(v);
+      opt.textContent = ttsVoiceLabel(v);
       group.appendChild(opt);
     });
     select.appendChild(group);
@@ -5375,20 +5414,17 @@ function buildVoiceList() {
     group.label = "その他の声";
     others.forEach(v => {
       const opt = document.createElement("option");
-      opt.value = v.name;
+      opt.value = ttsVoiceKey(v);
       opt.textContent = v.name + " (" + v.lang + ")";
       group.appendChild(opt);
     });
     select.appendChild(group);
   }
 
-  // 保存値があれば選択
-  const savedName = localStorage.getItem("goshinsho_voice_name");
-  if (savedName && ordered.some(v => v.name === savedName)) {
-    select.value = savedName;
-  } else {
-    select.value = "__auto__";
-  }
+  // 保存値があれば選択（名前だけ保存していた以前の版の設定も引き継ぐ）
+  const hasSaved = localStorage.getItem("goshinsho_voice_uri") || localStorage.getItem("goshinsho_voice_name");
+  const current = hasSaved ? ttsPickVoice() : null;
+  select.value = current ? ttsVoiceKey(current) : "__auto__";
 }
 
 // 設定モーダル開閉
@@ -5426,10 +5462,12 @@ const voiceSelectEl = document.getElementById("voiceSelect");
 if (voiceSelectEl) {
   voiceSelectEl.addEventListener("change", () => {
     const v = voiceSelectEl.value;
+    // 以前の版の「名前だけ」の保存は消し、一意キーで保存し直す
+    localStorage.removeItem("goshinsho_voice_name");
     if (v === "__auto__" || !v) {
-      localStorage.removeItem("goshinsho_voice_name");
+      localStorage.removeItem("goshinsho_voice_uri");
     } else {
-      localStorage.setItem("goshinsho_voice_name", v);
+      localStorage.setItem("goshinsho_voice_uri", v);
     }
     // 新しい設定を反映
     ttsVoice = ttsPickVoice();
