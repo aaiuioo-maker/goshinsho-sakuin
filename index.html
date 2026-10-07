@@ -4823,8 +4823,8 @@ window.toggleChapter = toggleChapter;
 
 // =============================================================
 // 読み上げ（Web Speech API / 音声合成）― 安定版
-//   ・本文を文単位に分割して順番に読む（iOSの長文停止バグ対策）
-//   ・15秒ごとの無音停止を pause/resume のキープアライブで回避
+//   ・本文を文単位に分割し、まとめて音声エンジンへ渡して途切れなく読む
+//   ・パソコン版Chromeのネット音声だけ、15秒の無音停止を pause/resume で回避
 //   ・高品質な日本語音声を優先選択
 //   ・記号やルビ括弧を読み上げ向けに前処理
 // =============================================================
@@ -4878,31 +4878,41 @@ function ttsPickVoice() {
 function ttsClean(text) {
   return text
     .replace(/⊙/g, "ス")                 // ⊙（ス）の記号
-    .replace(/[「」『』【】]/g, " ")        // かぎ括弧は区切りに
+    // 漢字の直後のふりがな（例：安心立命（あんじんりつめい））は二重読みになるので消す
+    .replace(/([一-龥々〆ヶ])（[ぁ-ゖァ-ヺー・]+）/g, "$1")
+    .replace(/[「」『』]/g, "")            // かぎ括弧は読まずに素通り
+    .replace(/[【】]/g, "\n")              // 見出し【…】は前後で文を区切る
     .replace(/[･・]/g, "、")               // 中黒は読点に
-    .replace(/[（(]([一二三四五六七八九十]+)[）)]/g, " $1 ") // （一）などは数字だけ残す
+    .replace(/[（(]([一二三四五六七八九十]+)[）)]/g, "$1、") // （一）などは数字だけ残す
+    .replace(/[（(]/g, "、")                // その他の括弧は、開きだけ軽い間に
+    .replace(/[）)]/g, "")                  // 閉じ括弧は間を空けずに続ける（「など、の」を防ぐ）
     .replace(/……|…/g, "、")
-    .replace(/\n+/g, "。")                 // 改行は文の切れ目に
-    .replace(/。+/g, "。");
+    .replace(/[\s　]*\n[\s　]*/g, "。")    // 改行は文の切れ目に
+    .replace(/[ 　]+/g, "")                // 余分な空白は消す（不要な間ができるため）
+    .replace(/、*。[、。]*/g, "。")         // 「、。」「。、」「。。」をまとめる
+    .replace(/、+/g, "、")
+    .replace(/^[、。]+/, "");
 }
 
-// 文単位に分割（長すぎる文はさらに読点で割る）
+// 文単位に分割（とても長い文だけ読点で割る）
+// 区切りすぎると文の途中で抑揚が途切れて不自然になるため、基本は「。」でのみ区切る。
 // ※ 古いiPhone（iOS 16.3以前）は後読み正規表現 (?<=…) が使えず
 //   スクリプト全体が止まるため、match() で区切り文字ごと切り出す
+const TTS_MAX_CHUNK = 120;
 function ttsSplit(text) {
   const cleaned = ttsClean(text);
   const rawSentences = cleaned.match(/[^。]+。?/g) || []; // 句点で分割（句点は残す）
   const chunks = [];
   for (let s of rawSentences) {
     s = s.trim();
-    if (!s) continue;
-    if (s.length <= 60) {
+    if (!s || s === "。") continue;
+    if (s.length <= TTS_MAX_CHUNK) {
       chunks.push(s);
     } else {
       // 長い文は読点でさらに分割
       let buf = "";
       for (const part of (s.match(/[^、]+、?/g) || [])) {
-        if ((buf + part).length > 60 && buf) {
+        if ((buf + part).length > TTS_MAX_CHUNK && buf) {
           chunks.push(buf);
           buf = part;
         } else {
@@ -4932,6 +4942,13 @@ function ttsShowPlaying() {
   ttsStopBtn.style.display = "";
 }
 
+// キープアライブが必要か：パソコン版Chromeのネット音声（Google 日本語など）だけが
+// 約15秒で無音停止するバグを持つ。端末内蔵の音声（iPhoneのKyokoなど）で
+// pause/resume を行うと読み上げが一瞬つっかえるため、その場合は行わない。
+function ttsNeedsKeepAlive() {
+  return !!(ttsVoice && ttsVoice.localService === false);
+}
+
 // キープアライブ開始（無音停止バグ回避）
 function ttsStartKeepAlive() {
   ttsStopKeepAlive();
@@ -4953,9 +4970,14 @@ function ttsStopKeepAlive() {
   }
 }
 
+// 読み上げごとの番号。停止や次の項目への切り替えのあとに届いた
+// 古い読み上げの終了通知を無視するために使う。
+let ttsSession = 0;
+
 // 読み上げを完全に停止
 function ttsStop() {
   if (!ttsSupported) return;
+  ttsSession++;
   ttsActive = false;
   ttsPaused = false;
   ttsIndex = 0;
@@ -4964,43 +4986,23 @@ function ttsStop() {
   ttsReset();
 }
 
-// 1文ずつ順番に読む
-function ttsSpeakNext() {
-  if (!ttsActive) return;
-  if (ttsIndex >= ttsChunks.length) {
-    // 全部読み終わった
-    if (bulkActive) {
-      // 連続再生中：次の項目へ
-      bulkAdvance();
-    } else {
-      ttsStop();
-    }
-    return;
+// 全部読み終わったとき
+function ttsFinished() {
+  if (bulkActive) {
+    // 連続再生中：次の項目へ
+    bulkAdvance();
+  } else {
+    ttsStop();
   }
-  const u = new SpeechSynthesisUtterance(ttsChunks[ttsIndex]);
-  u.lang = "ja-JP";
-  u.rate = TTS_RATE;
-  u.pitch = 1.0;
-  if (ttsVoice) u.voice = ttsVoice;
-
-  u.onend = () => {
-    if (!ttsActive) return;
-    ttsIndex++;
-    ttsSpeakNext(); // 次の文へ
-  };
-  u.onerror = () => {
-    if (!ttsActive) return;
-    // エラーでも次へ進めて止まらないように
-    ttsIndex++;
-    ttsSpeakNext();
-  };
-
-  try { window.speechSynthesis.speak(u); } catch(e) {}
 }
 
 // 読み上げ開始
+// 文をまとめて先に音声エンジンへ渡しておくことで、文と文の間に
+// 無駄な無音ができず、なめらかにつながる。
 function ttsPlay() {
   if (!ttsSupported || !ttsText) return;
+  ttsSession++;
+  const session = ttsSession;
   try { window.speechSynthesis.cancel(); } catch(e) {}
 
   // 音声を選び直す（このタイミングなら取得できていることが多い）
@@ -5012,9 +5014,31 @@ function ttsPlay() {
   ttsActive = true;
   ttsPaused = false;
 
-  ttsStartKeepAlive();
+  if (ttsNeedsKeepAlive()) ttsStartKeepAlive(); else ttsStopKeepAlive();
   ttsShowPlaying();
-  ttsSpeakNext();
+
+  const last = ttsChunks.length - 1;
+  ttsChunks.forEach((chunk, i) => {
+    const u = new SpeechSynthesisUtterance(chunk);
+    u.lang = "ja-JP";
+    u.rate = TTS_RATE;
+    u.pitch = 1.0;
+    if (ttsVoice) u.voice = ttsVoice;
+
+    const done = () => {
+      if (session !== ttsSession || !ttsActive) return;
+      ttsIndex = i + 1;
+      if (i === last) ttsFinished();
+    };
+    u.onend = done;
+    u.onerror = (e) => {
+      // 停止・切り替えによる中断は無視。それ以外のエラーは止まらず先へ進める
+      if (e && (e.error === "interrupted" || e.error === "canceled")) return;
+      done();
+    };
+
+    try { window.speechSynthesis.speak(u); } catch(e) {}
+  });
 }
 
 if (ttsSupported) {
