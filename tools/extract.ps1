@@ -38,7 +38,10 @@ if (-not $edge) { throw 'Microsoft Edge が見つかりません' }
 
 $url = 'file:///' + ($page -replace '\\', '/')
 $profileDir = Join-Path $env:TEMP 'goshinsho-edge-profile'
+# Edge が警告を出しても止まらないよう、この呼び出しの間だけエラーで止める設定を外す
+$ErrorActionPreference = 'Continue'
 $dom = & $edge --headless=new --disable-gpu --no-first-run --user-data-dir="$profileDir" --virtual-time-budget=5000 --dump-dom $url 2>$null | Out-String
+$ErrorActionPreference = 'Stop'
 
 $m = [regex]::Match($dom, '<pre id="out">([\s\S]*?)</pre>')
 if (-not $m.Success) { throw 'データを取り出せませんでした' }
