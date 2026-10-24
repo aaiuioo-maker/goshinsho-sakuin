@@ -2,3 +2,7 @@
 .azure-speech.json
 # 音声生成の作業用ファイル
 tools/work/
+# VOICEVOX で作っている途中のファイル
+audio/*.lock
+audio/*.part
+tools/__pycache__/
